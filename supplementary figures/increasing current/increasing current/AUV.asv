@@ -1,0 +1,98 @@
+clc
+clear
+echo on
+echo off 
+disp('Simulating  ...')
+% Initial_x = zeros(12,1);  % initial states:  x = [ u v w p q r  x y z phi theta psi]'
+%前面的uvw是大地，xyz是艇体
+%即上式真实的表示为x = [ x; y; z; ph; th; ps; u; v; w;  p;  q;  r ]
+Desired_x = [ 100; 0; 10;   0; 0; 0;   0; 0; 0; 0; 0; 0];
+% Control frequency is defined as follows %
+s_freq = 1;      % Hz
+s_time = 1/s_freq; % sec
+% End time
+Tf = 4000 ;
+
+%路近点设置
+
+%起始位置
+Initial_x = zeros(12,1);
+%光缆起始位置，需要释放缆绳
+Start_point = [ 50; 50; 100;   0; 0; 0;   0; 0; 0; 0; 0; 0];
+%光缆基座位置，x与y和起始位置相同，高度下降，同时艇体俯仰角旋转(这个先没做)
+Cable_start_base_point = [ 50; 50; 10;   0; 0; 0;   0; 0; 0; 0; 0; 0];
+%光缆起始信标位置，需要安装光缆基座，俯仰角不变（这个先没做）
+Cable_start_point = [ 30; 30; 20;   0; 0; 0;   0; 0; 0; 0; 0; 0];
+%光缆拖拽位置，需要释放多余光缆及配种
+Cable_drag_point = [ 200; 200; 100;   0; 0; 0;   0; 0; 0; 0; 0; 0];
+%光缆终止基座位置，x与y和拖拽位置相同，高度下降，同时艇体俯仰角旋转(这个先没做)
+Cable_drag_base_point = [ 200; 200; 10;   0; 0; 0;   0; 0; 0; 0; 0; 0];
+%光缆终止信标位置，x与y和拖拽位置相同，高度下降，同时艇体俯仰角旋转(这个先没做)
+Cable_end_point = [ 220; 220; 20;   0; 0; 0;   0; 0; 0; 0; 0; 0];
+
+
+% Scaling method
+method = 3; %三次曲线点对点轨迹规划
+% Create desired trajectory
+Xstart = eul2rotm(Initial_x(4:6).');    %欧拉角转旋转举证(点旋转、矢量旋转)，
+% 用来根据欧拉角(是否是位姿？)得到旋转矩阵
+Xstart = RpToTrans(Xstart, Initial_x(1:3)); %这个是构造(phi theta psi x y z)的一个增广矩阵，
+% 这一块是否有参考资料？  R是旋转矩阵，P是位置
+Xend = eul2rotm(Desired_x(4:6).');
+Xend = RpToTrans(Xend, Desired_x(1:3));
+Trajectory = CartesianTrajectory(Xstart, Xend, Tf, method, s_time);
+
+% --- MAIN LOOP ---
+N = round(Tf/s_time);               % number of samples
+xout = zeros(N,length(Initial_x)+1);  % memory allocation 内存分配？
+xdot = zeros(12,1);
+State=Initial_x ;
+LQR_K %(LQR_gain)
+global Ui ;
+for i=1:N-1
+i=i+1
+time = (i-1)*s_time;                   % simulation time in seconds	
+ % Trajectory(matrix -> list)
+T = cell2mat( Trajectory(i) );
+[R , p] = TransToRp(T);
+eul = rotm2eul(R).';
+Desired_eta = [p; eul; 0; 0; 0; 0; 0; 0];
+Error = State - Desired_eta;
+Ui = -LQR_gain*Error;
+
+[t,S_list] = ode45(@(t,State) AUV_Dynamic_model(t,State), [0  s_time], State);
+State = S_list(end,(1:12)).';
+
+xout(i,:) = [time,State'];        
+% 
+% x(1:6)'
+% x(7:12)'
+end 
+
+
+% time-series
+ti    = xout(:,1);    
+px     = xout(:,2);
+py     = xout(:,3);
+pz     = xout(:,4);
+theta     = xout(:,6)*180/pi;
+psi   = xout(:,7)*180/pi;
+
+figure(1)
+plot3(px,py,pz),grid,axis('equal'),xlabel('x'),ylabel('y'),title('position')
+
+figure(2)
+plot(ti,px ),grid,xlabel('time'),ylabel('x');hold on
+plot(ti,py ),grid,xlabel('time'),ylabel('y');hold on
+plot(ti,pz ),grid,xlabel('time'),ylabel('z');hold on
+
+figure(3)
+plot(ti,theta ),grid,xlabel('time'),ylabel('theta');hold on 
+plot(ti,psi ),grid,xlabel('time'),ylabel('psi');hold on 
+
+
+
+
+
+
+
